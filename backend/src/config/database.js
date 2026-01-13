@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config();
 
 // Determine database type: 'postgres' (if DATABASE_URL is set) or 'sqlite' (default/fallback)
-const isPostgres = process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgresql://');
+const isPostgres = process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'));
 
 let pool;
 let db; // Shared SQLite instance
@@ -78,7 +78,17 @@ async function initDatabase() {
     if (isPostgres) {
       const schemaPath = path.join(__dirname, '../../database/schema.sql');
       const schema = fs.readFileSync(schemaPath, 'utf8');
+
+      // Initialize if not exists
       await pool.query(schema);
+
+      // Migration: Ensure claude_reasoning column exists (if table was created earlier without it)
+      try {
+        await pool.query('ALTER TABLE processed_emails ADD COLUMN IF NOT EXISTS claude_reasoning TEXT');
+      } catch (e) {
+        // Ignore error if column already exists (PG < 9.6 might not support IF NOT EXISTS on ADD COLUMN)
+        // Note: Railway uses modern PG, but safety first
+      }
     } else {
       // Use existing shared db instance
       db.exec(`

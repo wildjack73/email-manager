@@ -102,7 +102,12 @@ async function loadRecentEmails() {
         const res = await fetch('/api/dashboard/recent?limit=50', { credentials: 'include' });
         const emails = await res.json();
 
-        if (emails.length === 0) {
+        // Handle error response from API
+        if (emails.error) {
+            throw new Error(emails.error);
+        }
+
+        if (!Array.isArray(emails) || emails.length === 0) {
             tbody.innerHTML = `
         <tr>
           <td colspan="6" class="empty-state">
