@@ -169,16 +169,52 @@ async function processEmails() {
                 // 4. Use Claude AI to classify
                 const { classification, reasoning } = await classifyEmail(email);
 
-                // 5. Take action based on classification
-                if (classification === 'SPAM' || classification === 'INUTILE') {
+                // 5. Save result to database FIRST (so it appears in dashboard even if deletion fails)
+                const action = (classification === 'SPAM' || classification === 'INUTILE') ? 'DELETED' : 'KEPT';
+                await saveProcessedEmail(email, classification, reasoning, action);
+
+                // 6. Take action based on classification
+                if (action === 'DELETED') {
                     console.log(`🗑️  Classified as ${classification} - DELETING`);
-                    await emailClient.moveToTrash(email.uid);
-                    await saveProcessedEmail(email, classification, reasoning, 'DELETED');
+                    try {
+                        // Robust access to UID functions
+                        const uidHandler = emailClient.imap.uid || emailClient.imap;
+                        const uid = email.uid; // Assuming email.uid is available here
+
+                        if (typeof uidHandler.addFlags !== 'function') {
+                            throw new Error('IMAP server or client does not support addFlags');
+                        }
+
+                        await new Promise((resolve, reject) => {
+                            uidHandler.addFlags(uid, '\\Deleted', (err) => {
+                                if (err) {
+                                    reject(err);
+                                    return;
+                                }
+
+                                // Expunge only the deleted UID
+                                const expungeHandler = emailClient.imap.uid || emailClient.imap;
+                                expungeHandler.expunge(uid, (err) => {
+                                    if (err) {
+                                        reject(err);
+                                        return;
+                                    }
+                                    console.log(`🗑️  Email UID ${uid} permanently deleted from INBOX`);
+                                    resolve();
+                                });
+                            });
+                        });
+                    } catch (err) {
+                        console.error(`⚠️ Failed to move email ${email.uid} to trash:`, err.message);
+                    }
                     deleted++;
                 } else {
                     console.log(`✅ Classified as IMPORTANT - KEEPING`);
-                    await emailClient.markAsRead(email.uid);
-                    await saveProcessedEmail(email, classification, reasoning, 'KEPT');
+                    try {
+                        await emailClient.markAsRead(email.uid);
+                    } catch (err) {
+                        console.error(`⚠️ Failed to mark email ${email.uid} as read:`, err.message);
+                    }
                     kept++;
                 }
 
