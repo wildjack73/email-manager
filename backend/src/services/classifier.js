@@ -3,7 +3,10 @@ const { classifyEmail } = require('./claudeAI');
 const { pool } = require('../config/database');
 
 // Load protected domains from environment
-const PROTECTED_DOMAINS = (process.env.PROTECTED_DOMAINS || '').split(',').map(d => d.trim());
+const PROTECTED_DOMAINS = (process.env.PROTECTED_DOMAINS || '')
+    .split(',')
+    .map(d => d.trim())
+    .filter(d => d.length > 0);
 
 /**
  * Check if email is already processed
