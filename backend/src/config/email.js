@@ -5,8 +5,9 @@ module.exports = {
     port: parseInt(process.env.EMAIL_PORT) || 993,
     user: process.env.EMAIL_USER,
     password: process.env.EMAIL_PASSWORD,
-    tls: process.env.EMAIL_TLS === 'true',
+    tls: true, // Use TLS by default (port 993)
     tlsOptions: {
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
+        servername: process.env.EMAIL_HOST || 'ex.mail.ovh.net'
     }
 };
