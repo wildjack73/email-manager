@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS processed_emails (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_message_id ON processed_emails(message_id);
-CREATE INDEX idx_processed_at ON processed_emails(processed_at DESC);
-CREATE INDEX idx_classification ON processed_emails(classification);
-CREATE INDEX idx_action_taken ON processed_emails(action_taken);
+CREATE INDEX IF NOT EXISTS idx_message_id ON processed_emails(message_id);
+CREATE INDEX IF NOT EXISTS idx_processed_at ON processed_emails(processed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_classification ON processed_emails(classification);
+CREATE INDEX IF NOT EXISTS idx_action_taken ON processed_emails(action_taken);
 
 -- Whitelist domains (never delete)
 CREATE TABLE IF NOT EXISTS whitelist (
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS whitelist (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_whitelist_domain ON whitelist(LOWER(domain));
+CREATE INDEX IF NOT EXISTS idx_whitelist_domain ON whitelist(LOWER(domain));
 
 -- Banned keywords
 CREATE TABLE IF NOT EXISTS keywords (
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS keywords (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_keywords_keyword ON keywords(keyword);
+CREATE INDEX IF NOT EXISTS idx_keywords_keyword ON keywords(keyword);
 
 -- Users for dashboard authentication
 CREATE TABLE IF NOT EXISTS users (
