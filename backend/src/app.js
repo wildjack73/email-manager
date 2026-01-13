@@ -66,7 +66,7 @@ async function start() {
         startScheduler();
 
         // Start server
-        app.listen(PORT, () => {
+        app.listen(PORT, '0.0.0.0', () => {
             console.log(`\n✅ Server running on port ${PORT}`);
             console.log(`📊 Dashboard: http://localhost:${PORT}`);
             console.log(`🔐 Login with credentials from .env file\n`);
