@@ -10,7 +10,7 @@ const PROTECTED_DOMAINS = (process.env.PROTECTED_DOMAINS || '').split(',').map(d
  */
 async function isEmailProcessed(messageId) {
     const result = await pool.query(
-        'SELECT id FROM processed_emails WHERE message_id = ?',
+        'SELECT id FROM processed_emails WHERE message_id = $1',
         [messageId]
     );
     return result.rows.length > 0;
@@ -24,7 +24,7 @@ async function isWhitelisted(fromEmail) {
     if (!domain) return false;
 
     const result = await pool.query(
-        "SELECT id FROM whitelist WHERE LOWER(?) LIKE '%' || LOWER(domain) || '%'",
+        "SELECT id FROM whitelist WHERE LOWER($1) LIKE '%' || LOWER(domain) || '%'",
         [domain]
     );
 
@@ -92,7 +92,7 @@ async function saveProcessedEmail(email, classification, reasoning, action) {
     await pool.query(
         `INSERT INTO processed_emails 
      (message_id, from_email, subject, classification, claude_reasoning, action_taken) 
-     VALUES (?, ?, ?, ?, ?, ?)`,
+     VALUES ($1, $2, $3, $4, $5, $6)`,
         [email.messageId, email.fromEmail, email.subject, classification, reasoning, action]
     );
 }
