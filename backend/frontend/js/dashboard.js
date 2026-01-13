@@ -105,7 +105,7 @@ async function loadRecentEmails() {
         if (emails.length === 0) {
             tbody.innerHTML = `
         <tr>
-          <td colspan="5" class="empty-state">
+          <td colspan="6" class="empty-state">
             <div class="empty-state-icon">📭</div>
             <p>Aucun email traité pour le moment</p>
           </td>
@@ -127,6 +127,7 @@ async function loadRecentEmails() {
           </td>
           <td>${truncate(email.subject, 50)}</td>
           <td>${classificationBadge}</td>
+          <td style="font-size: 0.875rem; color: var(--text-muted); font-style: italic;">${email.claude_reasoning || ''}</td>
           <td>${actionBadge}</td>
         </tr>
       `;
@@ -136,7 +137,7 @@ async function loadRecentEmails() {
         console.error('Failed to load emails:', error);
         tbody.innerHTML = `
       <tr>
-        <td colspan="5" class="text-center" style="color: var(--danger);">
+        <td colspan="6" class="text-center" style="color: var(--danger);">
           Erreur de chargement
         </td>
       </tr>
