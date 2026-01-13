@@ -182,11 +182,13 @@ async function processEmails() {
                 processed++;
 
             } catch (emailError) {
-                console.error(`❌ Error processing email ${email.messageId}:`, emailError.message);
-                // In case of error, keep the email (safety first)
+                const errorMessage = emailError.message || 'Unknown error';
+                console.error(`❌ Error processing email ${email.messageId}:`, errorMessage);
+
+                // In case of error, keep the email but CLEARLY mark it as an ERROR in the reasoning
                 try {
                     await emailClient.markAsRead(email.seqno);
-                    await saveProcessedEmail(email, 'IMPORTANT', `Error: ${emailError.message}`, 'KEPT');
+                    await saveProcessedEmail(email, 'IMPORTANT', `ERREUR IA: ${errorMessage}`, 'KEPT');
                     kept++;
                 } catch (saveError) {
                     console.error('Failed to save error state:', saveError);
