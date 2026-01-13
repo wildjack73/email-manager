@@ -44,7 +44,7 @@ class EmailClient {
     }
 
     // Fetch unread emails
-    async fetchUnreadEmails() {
+    async fetchUnreadEmails(limit = 20) {
         return new Promise((resolve, reject) => {
             this.imap.openBox('INBOX', false, (err, box) => {
                 if (err) {
@@ -65,10 +65,13 @@ class EmailClient {
                         return;
                     }
 
-                    console.log(`📬 Found ${results.length} unread emails`);
+                    console.log(`📬 Found ${results.length} unread emails. Processing first ${Math.min(results.length, limit)}...`);
+
+                    // Get newest emails first and limit count
+                    const limitedResults = results.sort((a, b) => b - a).slice(0, limit);
 
                     const emails = [];
-                    const fetch = this.imap.fetch(results, {
+                    const fetch = this.imap.fetch(limitedResults, {
                         bodies: '',
                         markSeen: false // Don't mark as read automatically
                     });
