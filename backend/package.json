@@ -30,7 +30,9 @@
         "uuid": "^9.0.1"
     },
     "devDependencies": {
-        "better-sqlite3": "^12.6.0",
         "nodemon": "^3.0.2"
+    },
+    "optionalDependencies": {
+        "better-sqlite3": "^12.6.0"
     }
 }
