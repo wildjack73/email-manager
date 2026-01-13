@@ -44,7 +44,7 @@ class EmailClient {
     }
 
     // Fetch unread emails
-    async fetchUnreadEmails(limit = 50) {
+    async fetchUnreadEmails(limit = 200) {
         return new Promise((resolve, reject) => {
             this.imap.openBox('INBOX', false, (err, box) => {
                 if (err) {
@@ -87,7 +87,7 @@ class EmailClient {
                         }
                     };
 
-                    const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000);
+                    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
                     fetch.on('message', (msg, seqno) => {
                         let buffer = '';
@@ -103,8 +103,8 @@ class EmailClient {
                                 const parsed = await simpleParser(buffer);
                                 const emailDate = parsed.date || new Date();
 
-                                // Only keep emails from the last 6 minutes
-                                if (emailDate >= sixMinutesAgo) {
+                                // Only keep emails from the last 30 minutes
+                                if (emailDate >= thirtyMinutesAgo) {
                                     emails.push({
                                         seqno,
                                         messageId: parsed.messageId,
