@@ -73,8 +73,11 @@ class EmailClient {
                     const emails = [];
                     const fetch = this.imap.fetch(limitedResults, {
                         bodies: '',
-                        markSeen: false // Don't mark as read automatically
+                        struct: true,
+                        markSeen: false
                     });
+
+                    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
                     fetch.on('message', (msg, seqno) => {
                         let buffer = '';
@@ -88,6 +91,14 @@ class EmailClient {
                         msg.once('end', async () => {
                             try {
                                 const parsed = await simpleParser(buffer);
+
+                                // Strictly filter by date (last 5 minutes)
+                                const emailDate = parsed.date || new Date();
+                                if (emailDate < fiveMinutesAgo) {
+                                    // console.log(`⏩ Skipping old email from ${emailDate.toISOString()}`);
+                                    return;
+                                }
+
                                 emails.push({
                                     seqno,
                                     messageId: parsed.messageId,
@@ -96,7 +107,7 @@ class EmailClient {
                                     subject: parsed.subject || '(No subject)',
                                     text: parsed.text || '',
                                     html: parsed.html || '',
-                                    date: parsed.date
+                                    date: emailDate
                                 });
                             } catch (parseErr) {
                                 console.error('Error parsing email:', parseErr);
@@ -109,6 +120,7 @@ class EmailClient {
                     });
 
                     fetch.once('end', () => {
+                        console.log(`✨ Filtering complete. ${emails.length} emails are from the last 5 minutes.`);
                         resolve(emails);
                     });
                 });
