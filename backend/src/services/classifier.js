@@ -138,7 +138,7 @@ async function processEmails() {
                 // 1. Check whitelist first (highest priority)
                 if (await isWhitelisted(email.fromEmail)) {
                     console.log('✅ Whitelisted domain - KEEPING');
-                    await emailClient.markAsRead(email.seqno);
+                    await emailClient.markAsRead(email.uid);
                     await saveProcessedEmail(email, 'IMPORTANT', 'Whitelisted domain', 'KEPT');
                     kept++;
                     processed++;
@@ -148,7 +148,7 @@ async function processEmails() {
                 // 2. Check protected domains (safety rule)
                 if (isProtectedDomain(email.fromEmail)) {
                     console.log('🔒 Protected domain (.gouv.fr, bank, etc.) - KEEPING');
-                    await emailClient.markAsRead(email.seqno);
+                    await emailClient.markAsRead(email.uid);
                     await saveProcessedEmail(email, 'IMPORTANT', 'Protected domain (safety rule)', 'KEPT');
                     kept++;
                     processed++;
@@ -159,7 +159,7 @@ async function processEmails() {
                 const keywordCheck = await containsBannedKeywords(email.subject, email.text);
                 if (keywordCheck.found) {
                     console.log(`🚫 Banned keyword "${keywordCheck.keyword}" detected - DELETING`);
-                    await emailClient.moveToTrash(email.seqno);
+                    await emailClient.moveToTrash(email.uid);
                     await saveProcessedEmail(email, 'SPAM', `Contains banned keyword: ${keywordCheck.keyword}`, 'DELETED');
                     deleted++;
                     processed++;
@@ -172,12 +172,12 @@ async function processEmails() {
                 // 5. Take action based on classification
                 if (classification === 'SPAM' || classification === 'INUTILE') {
                     console.log(`🗑️  Classified as ${classification} - DELETING`);
-                    await emailClient.moveToTrash(email.seqno);
+                    await emailClient.moveToTrash(email.uid);
                     await saveProcessedEmail(email, classification, reasoning, 'DELETED');
                     deleted++;
                 } else {
                     console.log(`✅ Classified as IMPORTANT - KEEPING`);
-                    await emailClient.markAsRead(email.seqno);
+                    await emailClient.markAsRead(email.uid);
                     await saveProcessedEmail(email, classification, reasoning, 'KEPT');
                     kept++;
                 }
@@ -190,7 +190,7 @@ async function processEmails() {
 
                 // In case of error, keep the email but CLEARLY mark it as an ERROR in the reasoning
                 try {
-                    await emailClient.markAsRead(email.seqno);
+                    await emailClient.markAsRead(email.uid);
                     await saveProcessedEmail(email, 'IMPORTANT', `ERREUR IA: ${errorMessage}`, 'KEPT');
                     kept++;
                 } catch (saveError) {

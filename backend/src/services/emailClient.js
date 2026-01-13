@@ -91,11 +91,16 @@ class EmailClient {
 
                     fetch.on('message', (msg, seqno) => {
                         let buffer = '';
+                        let attrs = null;
 
                         msg.on('body', (stream, info) => {
                             stream.on('data', (chunk) => {
                                 buffer += chunk.toString('utf8');
                             });
+                        });
+
+                        msg.once('attributes', (a) => {
+                            attrs = a;
                         });
 
                         msg.once('end', async () => {
@@ -106,7 +111,7 @@ class EmailClient {
                                 // Only keep emails from the last 30 minutes
                                 if (emailDate >= thirtyMinutesAgo) {
                                     emails.push({
-                                        seqno,
+                                        uid: attrs.uid,
                                         messageId: parsed.messageId,
                                         from: parsed.from?.text || 'Unknown',
                                         fromEmail: parsed.from?.value?.[0]?.address || '',
@@ -138,7 +143,8 @@ class EmailClient {
     }
 
     // Move email to trash
-    async moveToTrash(seqno) {
+    // Move email to trash (using UID)
+    async moveToTrash(uid) {
         return new Promise((resolve, reject) => {
             this.imap.openBox('INBOX', false, (err, box) => {
                 if (err) {
@@ -146,20 +152,19 @@ class EmailClient {
                     return;
                 }
 
-                // Add deleted flag
-                this.imap.addFlags(seqno, '\\Deleted', (err) => {
+                // Add deleted flag and expunge
+                this.imap.uid.addFlags(uid, '\\Deleted', (err) => {
                     if (err) {
                         reject(err);
                         return;
                     }
 
-                    // Expunge (permanently delete from INBOX)
-                    this.imap.expunge((err) => {
+                    this.imap.uid.expunge(uid, (err) => {
                         if (err) {
                             reject(err);
                             return;
                         }
-                        console.log(`🗑️  Email ${seqno} moved to trash`);
+                        console.log(`🗑️  Email UID ${uid} permanently deleted from INBOX`);
                         resolve();
                     });
                 });
@@ -167,8 +172,8 @@ class EmailClient {
         });
     }
 
-    // Mark email as read (keep in inbox)
-    async markAsRead(seqno) {
+    // Mark email as read (using UID)
+    async markAsRead(uid) {
         return new Promise((resolve, reject) => {
             this.imap.openBox('INBOX', false, (err, box) => {
                 if (err) {
@@ -176,12 +181,12 @@ class EmailClient {
                     return;
                 }
 
-                this.imap.addFlags(seqno, '\\Seen', (err) => {
+                this.imap.uid.addFlags(uid, '\\Seen', (err) => {
                     if (err) {
                         reject(err);
                         return;
                     }
-                    console.log(`✅ Email ${seqno} marked as read`);
+                    console.log(`✅ Email UID ${uid} marked as read`);
                     resolve();
                 });
             });
