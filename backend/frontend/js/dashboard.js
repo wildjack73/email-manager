@@ -143,7 +143,7 @@ async function loadRecentEmails() {
         tbody.innerHTML = `
       <tr>
         <td colspan="6" class="text-center" style="color: var(--danger);">
-          Erreur de chargement
+          Erreur: ${error.message}
         </td>
       </tr>
     `;
