@@ -15,6 +15,9 @@ const keywordsRoutes = require('./routes/keywords');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Essential for Railway/Proxies to handle secure cookies
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors({
     origin: true,
