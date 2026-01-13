@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs", "python3", "make", "gcc", "g++"]
+nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["npm install --omit=optional"]
 
 [phases.build]
 cmds = ["echo 'Build skipped'"]
