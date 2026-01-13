@@ -77,6 +77,7 @@ async function initDatabase() {
   try {
     if (isPostgres) {
       const schemaPath = path.join(__dirname, '../../database/schema.sql');
+      const schema = fs.readFileSync(schemaPath, 'utf8');
       await pool.query(schema);
     } else {
       // Use existing shared db instance
