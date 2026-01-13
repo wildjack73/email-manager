@@ -44,7 +44,7 @@ class EmailClient {
     }
 
     // Fetch unread emails
-    async fetchUnreadEmails(limit = 20) {
+    async fetchUnreadEmails(limit = 50) {
         return new Promise((resolve, reject) => {
             this.imap.openBox('INBOX', false, (err, box) => {
                 if (err) {
@@ -65,10 +65,9 @@ class EmailClient {
                         return;
                     }
 
-                    console.log(`📬 Found ${results.length} unread emails. Processing first ${Math.min(results.length, limit)}...`);
-
                     // Get newest emails first and limit count
                     const limitedResults = results.sort((a, b) => b - a).slice(0, limit);
+                    console.log(`📬 Found ${results.length} unread. Checking newest ${limitedResults.length}...`);
 
                     const emails = [];
                     const fetch = this.imap.fetch(limitedResults, {
@@ -77,7 +76,18 @@ class EmailClient {
                         markSeen: false
                     });
 
-                    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+                    let messagesToProcess = limitedResults.length;
+                    let processedCount = 0;
+
+                    const checkDone = () => {
+                        processedCount++;
+                        if (processedCount === messagesToProcess) {
+                            console.log(`✨ Filtering complete. ${emails.length} emails match criteria.`);
+                            resolve(emails);
+                        }
+                    };
+
+                    const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000);
 
                     fetch.on('message', (msg, seqno) => {
                         let buffer = '';
@@ -91,26 +101,25 @@ class EmailClient {
                         msg.once('end', async () => {
                             try {
                                 const parsed = await simpleParser(buffer);
-
-                                // Strictly filter by date (last 5 minutes)
                                 const emailDate = parsed.date || new Date();
-                                if (emailDate < fiveMinutesAgo) {
-                                    // console.log(`⏩ Skipping old email from ${emailDate.toISOString()}`);
-                                    return;
-                                }
 
-                                emails.push({
-                                    seqno,
-                                    messageId: parsed.messageId,
-                                    from: parsed.from?.text || 'Unknown',
-                                    fromEmail: parsed.from?.value?.[0]?.address || '',
-                                    subject: parsed.subject || '(No subject)',
-                                    text: parsed.text || '',
-                                    html: parsed.html || '',
-                                    date: emailDate
-                                });
+                                // Only keep emails from the last 6 minutes
+                                if (emailDate >= sixMinutesAgo) {
+                                    emails.push({
+                                        seqno,
+                                        messageId: parsed.messageId,
+                                        from: parsed.from?.text || 'Unknown',
+                                        fromEmail: parsed.from?.value?.[0]?.address || '',
+                                        subject: parsed.subject || '(No subject)',
+                                        text: parsed.text || '',
+                                        html: parsed.html || '',
+                                        date: emailDate
+                                    });
+                                }
                             } catch (parseErr) {
-                                console.error('Error parsing email:', parseErr);
+                                console.error('Error parsing individual email:', parseErr);
+                            } finally {
+                                checkDone();
                             }
                         });
                     });
@@ -120,8 +129,8 @@ class EmailClient {
                     });
 
                     fetch.once('end', () => {
-                        console.log(`✨ Filtering complete. ${emails.length} emails are from the last 5 minutes.`);
-                        resolve(emails);
+                        // If no messages were actually fetched (rare but safer)
+                        if (messagesToProcess === 0) resolve([]);
                     });
                 });
             });
