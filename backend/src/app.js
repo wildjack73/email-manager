@@ -36,7 +36,7 @@ app.use(session({
 }));
 
 // Serve static frontend files
-app.use(express.static(path.join(__dirname, '../../frontend')));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -51,7 +51,7 @@ app.get('/api/health', (req, res) => {
 
 // Serve index.html for all other routes (SPA)
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../frontend/index.html'));
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 // Initialize and start server
