@@ -14,29 +14,29 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022';
  */
 async function classifyEmail(email) {
     try {
-        const prompt = `Tu es un assistant IA spécialisé dans le tri d'emails. Ton rôle est d'analyser un email et de le classifier en 3 catégories :
+        const prompt = `
+Tu es un assistant expert en tri d'emails subissant une surcharge de messages. Ton rôle est d'être STRICT pour ne laisser passer que l'essentiel.
+Classe l'email suivant en 3 catégories :
+1. SPAM : Publicités, newsletters, annonces de ventes aux enchères (ex: priseur.net, interencheres), catalogues de lots, offres promotionnelles, sollicitations commerciales.
+2. INUTILE : Notifications automatiques de réseaux sociaux (LinkedIn, Facebook), alertes de connexion, confirmations de newsletters choisies mais non urgentes.
+3. IMPORTANT : Emails envoyés par des humains (collègues, clients, famille), factures, documents administratifs, alertes de sécurité critiques, relances réelles.
 
-**SPAM** : Publicités non sollicitées, arnaque, phishing, emails suspects
-**INUTILE** : Newsletters non importantes, notifications sociales, promotions de marques connues
-**IMPORTANT** : Emails de clients, documents officiels, factures, emails professionnels importants
+Règles :
+- Les publicités déguisées en "alertes" ou "ventes de lots" sont du SPAM.
+- Si c'est une machine qui envoie une offre commerciale : SPAM.
+- Ne garde comme IMPORTANT que ce qui nécessite une lecture ou une action de l'utilisateur.
 
-Règles strictes :
-- Les emails de banques, impôts, URSSAF, notaires, avocats sont TOUJOURS IMPORTANT
-- Les emails d'administrations françaises (.gouv.fr) sont TOUJOURS IMPORTANT
-- En cas de doute, privilégie IMPORTANT plutôt que de risquer de supprimer un email utile
-
-Analyse cet email :
-
-**Expéditeur** : ${email.from}
-**Email** : ${email.fromEmail}
-**Sujet** : ${email.subject}
-**Contenu** : ${email.text ? email.text.substring(0, 1000) : '(Vide)'}
-
-Réponds UNIQUEMENT au format JSON suivant (sans markdown) :
+Tu dois répondre UNIQUEMENT au format JSON :
 {
-  "classification": "SPAM|INUTILE|IMPORTANT",
-  "reasoning": "Explication courte de ta décision"
-}`;
+  "classification": "SPAM" | "INUTILE" | "IMPORTANT",
+  "reasoning": "Explication courte"
+}
+
+Email à analyser :
+Expéditeur : ${email.from}
+Sujet : ${email.subject}
+Contenu : ${email.text ? email.text.substring(0, 2000) : '(Vide)'}
+`;
 
         const message = await anthropic.messages.create({
             model: CLAUDE_MODEL,
