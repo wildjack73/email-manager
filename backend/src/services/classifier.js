@@ -119,7 +119,10 @@ async function processEmails() {
             const processedStatus = await isEmailProcessed(email.messageId);
             if (processedStatus.processed) {
                 if (processedStatus.action === 'DELETED') {
-                    console.log('⏭️  Already deleted, skipping');
+                    console.log('🧹 Already deleted in DB but still in INBOX - re-deleting zombie email');
+                    toDelete.push(email.uid);
+                    deleted++;
+                    processed++;
                 } else {
                     console.log('⏭️  Already processed, skipping');
                 }
