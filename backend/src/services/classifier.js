@@ -1,6 +1,7 @@
 const EmailClient = require('./emailClient');
 const { classifyEmail } = require('./claudeAI');
 const { pool } = require('../config/database');
+const ProcessedEmail = require('../models/ProcessedEmail');
 
 // Load protected domains from environment
 const PROTECTED_DOMAINS = (process.env.PROTECTED_DOMAINS || '')
@@ -10,13 +11,17 @@ const PROTECTED_DOMAINS = (process.env.PROTECTED_DOMAINS || '')
 
 /**
  * Check if email is already processed
+ * Returns: { processed: boolean, action: string|null }
  */
 async function isEmailProcessed(messageId) {
     const result = await pool.query(
-        'SELECT id FROM processed_emails WHERE message_id = $1',
+        'SELECT id, action_taken FROM processed_emails WHERE message_id = $1',
         [messageId]
     );
-    return result.rows.length > 0;
+    if (result.rows.length === 0) {
+        return { processed: false, action: null };
+    }
+    return { processed: true, action: result.rows[0].action_taken };
 }
 
 /**
@@ -85,6 +90,12 @@ async function processEmails() {
     try {
         console.log('🚀 Starting email classification process (v3 - Robust Batch)...');
 
+        // Cleanup old deleted emails (older than 7 days)
+        const cleanedCount = await ProcessedEmail.cleanupDeletedEmails(7);
+        if (cleanedCount > 0) {
+            console.log(`🧹 Cleaned up ${cleanedCount} old deleted emails from database`);
+        }
+
         // Phase 1: Fetch
         await emailClient.connect();
         const emails = await emailClient.fetchUnreadEmails(200);
@@ -105,8 +116,13 @@ async function processEmails() {
         for (const email of emails) {
             console.log(`\n📧 Classifying: ${email.subject} from ${email.fromEmail}`);
 
-            if (await isEmailProcessed(email.messageId)) {
-                console.log('⏭️  Already processed, skipping');
+            const processedStatus = await isEmailProcessed(email.messageId);
+            if (processedStatus.processed) {
+                if (processedStatus.action === 'DELETED') {
+                    console.log('⏭️  Already deleted, skipping');
+                } else {
+                    console.log('⏭️  Already processed, skipping');
+                }
                 continue;
             }
 
@@ -160,8 +176,25 @@ async function processEmails() {
         if (toDelete.length > 0 || toMarkRead.length > 0) {
             console.log(`\n📦 Applying actions to ${toDelete.length + toMarkRead.length} emails...`);
             await emailClient.connect();
-            if (toDelete.length > 0) await emailClient.deleteMultiple(toDelete);
-            if (toMarkRead.length > 0) await emailClient.markMultipleAsRead(toMarkRead);
+
+            if (toDelete.length > 0) {
+                try {
+                    const deleteResult = await emailClient.deleteMultiple(toDelete);
+                    console.log(`✅ Deletion result: ${deleteResult.count} emails deleted using ${deleteResult.method}`);
+                } catch (error) {
+                    console.error('❌ Failed to delete emails:', error.message);
+                    // Continue processing even if deletion fails
+                }
+            }
+
+            if (toMarkRead.length > 0) {
+                try {
+                    await emailClient.markMultipleAsRead(toMarkRead);
+                } catch (error) {
+                    console.error('❌ Failed to mark emails as read:', error.message);
+                }
+            }
+
             emailClient.disconnect();
         }
 

@@ -183,45 +183,66 @@ class EmailClient {
 
     // Move multiple emails to trash (using UIDs)
     async deleteMultiple(uids) {
-        if (!uids || uids.length === 0) return;
+        if (!uids || uids.length === 0) {
+            console.log('ℹ️  No emails to delete');
+            return { success: true, count: 0 };
+        }
 
-        const trashFolder = await this.findTrashFolder();
-        console.log(`🗑️  Detected trash/junk folder: ${trashFolder}`);
+        try {
+            const trashFolder = await this.findTrashFolder();
+            console.log(`🗑️  Detected trash/junk folder: ${trashFolder}`);
 
-        return new Promise((resolve, reject) => {
-            this.imap.openBox('INBOX', false, (err) => {
-                if (err) return reject(err);
-
-                console.log(`📦 Moving ${uids.length} emails to ${trashFolder}...`);
-
-                // Try moving first (better for webmails)
-                this.imap.uid.move(uids, trashFolder, (moveErr) => {
-                    if (!moveErr) {
-                        console.log(`✨ Successfully moved ${uids.length} emails to ${trashFolder}. Expunging...`);
-                        // IMPORTANT: Move only flags for deletion on some servers, we must expunge to remove from INBOX
-                        this.imap.expunge((expungeErr) => {
-                            if (expungeErr) console.warn('⚠️ Expunge after move failed:', expungeErr.message);
-                            else console.log('✨ Inbox expunged after move');
-                            resolve();
-                        });
-                        return;
+            return new Promise((resolve, reject) => {
+                this.imap.openBox('INBOX', false, (err) => {
+                    if (err) {
+                        console.error('❌ Failed to open INBOX for deletion:', err.message);
+                        return reject(new Error(`Failed to open INBOX: ${err.message}`));
                     }
 
-                    console.warn(`⚠️ Could not move to ${trashFolder}: ${moveErr.message}. Falling back to flag deletion.`);
+                    console.log(`📦 Moving ${uids.length} emails to ${trashFolder}...`);
 
-                    // Fallback to traditional flag deletion
-                    this.imap.uid.addFlags(uids, '\\Deleted', (flagErr) => {
-                        if (flagErr) return reject(flagErr);
+                    // Try moving first (better for webmails)
+                    this.imap.uid.move(uids, trashFolder, (moveErr) => {
+                        if (!moveErr) {
+                            console.log(`✨ Successfully moved ${uids.length} emails to ${trashFolder}. Expunging...`);
+                            // IMPORTANT: Move only flags for deletion on some servers, we must expunge to remove from INBOX
+                            this.imap.expunge((expungeErr) => {
+                                if (expungeErr) {
+                                    console.warn('⚠️ Expunge after move failed:', expungeErr.message);
+                                    // Still consider it a success since emails were moved
+                                } else {
+                                    console.log('✨ Inbox expunged after move');
+                                }
+                                resolve({ success: true, count: uids.length, method: 'move' });
+                            });
+                            return;
+                        }
 
-                        this.imap.expunge((expungeErr) => {
-                            if (expungeErr) console.warn('⚠️ Expunge failed:', expungeErr.message);
-                            else console.log('✨ Emails flagged and expunged');
-                            resolve();
+                        console.warn(`⚠️ Could not move to ${trashFolder}: ${moveErr.message}. Falling back to flag deletion.`);
+
+                        // Fallback to traditional flag deletion
+                        this.imap.uid.addFlags(uids, '\\Deleted', (flagErr) => {
+                            if (flagErr) {
+                                console.error('❌ Failed to flag emails for deletion:', flagErr.message);
+                                return reject(new Error(`Failed to delete emails: ${flagErr.message}`));
+                            }
+
+                            this.imap.expunge((expungeErr) => {
+                                if (expungeErr) {
+                                    console.error('❌ Expunge failed:', expungeErr.message);
+                                    return reject(new Error(`Failed to expunge: ${expungeErr.message}`));
+                                }
+                                console.log('✨ Emails flagged and expunged');
+                                resolve({ success: true, count: uids.length, method: 'flag+expunge' });
+                            });
                         });
                     });
                 });
             });
-        });
+        } catch (error) {
+            console.error('❌ Critical error in deleteMultiple:', error.message);
+            throw new Error(`Delete operation failed: ${error.message}`);
+        }
     }
 
     // Mark multiple emails as read (using UIDs)

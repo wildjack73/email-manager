@@ -41,7 +41,7 @@ class ProcessedEmail {
   static async getRecentActivity(days = 7) {
     const safeDays = parseInt(days) || 7;
     const result = await pool.query(`
-      SELECT 
+      SELECT
         DATE(processed_at) as date,
         COUNT(*) as total,
         SUM(CASE WHEN action_taken = 'DELETED' THEN 1 ELSE 0 END) as deleted
@@ -51,6 +51,21 @@ class ProcessedEmail {
       ORDER BY date DESC
     `);
     return result.rows;
+  }
+
+  /**
+   * Clean up old deleted emails from database
+   * @param {number} days - Delete emails older than this many days (default 7)
+   * @returns {number} Number of emails deleted
+   */
+  static async cleanupDeletedEmails(days = 7) {
+    const safeDays = parseInt(days) || 7;
+    const result = await pool.query(`
+      DELETE FROM processed_emails
+      WHERE action_taken = 'DELETED'
+        AND processed_at < NOW() - INTERVAL '${safeDays} days'
+    `);
+    return result.rowCount || 0;
   }
 }
 
