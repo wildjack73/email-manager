@@ -204,16 +204,22 @@ class EmailClient {
                     // Try moving first (better for webmails)
                     this.imap.uid.move(uids, trashFolder, (moveErr) => {
                         if (!moveErr) {
-                            console.log(`✨ Successfully moved ${uids.length} emails to ${trashFolder}. Expunging...`);
-                            // IMPORTANT: Move only flags for deletion on some servers, we must expunge to remove from INBOX
-                            this.imap.expunge((expungeErr) => {
-                                if (expungeErr) {
-                                    console.warn('⚠️ Expunge after move failed:', expungeErr.message);
-                                    // Still consider it a success since emails were moved
-                                } else {
-                                    console.log('✨ Inbox expunged after move');
+                            console.log(`✨ Successfully moved ${uids.length} emails to ${trashFolder}`);
+                            // CRITICAL: On OVH Exchange, MOVE doesn't delete from INBOX - we must flag as deleted
+                            console.log('🔨 Flagging moved emails as \\Deleted to remove from INBOX...');
+                            this.imap.uid.addFlags(uids, '\\Deleted', (flagErr) => {
+                                if (flagErr) {
+                                    console.warn('⚠️ Failed to flag as deleted:', flagErr.message);
+                                    // Still try to expunge
                                 }
-                                resolve({ success: true, count: uids.length, method: 'move' });
+                                this.imap.expunge((expungeErr) => {
+                                    if (expungeErr) {
+                                        console.warn('⚠️ Expunge after move failed:', expungeErr.message);
+                                    } else {
+                                        console.log('✨ Inbox cleaned - emails moved and removed');
+                                    }
+                                    resolve({ success: true, count: uids.length, method: 'move+delete' });
+                                });
                             });
                             return;
                         }
