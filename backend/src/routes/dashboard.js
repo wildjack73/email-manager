@@ -7,6 +7,11 @@ const { requireAuth } = require('../middleware/auth');
 // Get dashboard statistics
 router.get('/stats', requireAuth, async (req, res) => {
     try {
+        // Disable caching to ensure fresh data
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         const stats = await ProcessedEmail.getStats();
         res.json(stats);
     } catch (error) {
@@ -18,6 +23,11 @@ router.get('/stats', requireAuth, async (req, res) => {
 // Get recent activity (last 7 days)
 router.get('/activity', requireAuth, async (req, res) => {
     try {
+        // Disable caching to ensure fresh data
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         const days = parseInt(req.query.days) || 7;
         const activity = await ProcessedEmail.getRecentActivity(days);
         res.json(activity);
@@ -30,6 +40,11 @@ router.get('/activity', requireAuth, async (req, res) => {
 // Get recent processed emails
 router.get('/recent', requireAuth, async (req, res) => {
     try {
+        // Disable caching to ensure fresh data
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+
         const limit = parseInt(req.query.limit) || 50;
         const offset = parseInt(req.query.offset) || 0;
         const emails = await ProcessedEmail.getAll(limit, offset);
