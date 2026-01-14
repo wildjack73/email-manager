@@ -1,9 +1,40 @@
+// 🌐 Global API Fetcher with Auth Redirection
+async function apiFetch(url, options = {}) {
+    const finalOptions = {
+        credentials: 'include',
+        ...options
+    };
+
+    if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
+        finalOptions.headers = {
+            'Content-Type': 'application/json',
+            ...(options.headers || {})
+        };
+        finalOptions.body = JSON.stringify(options.body);
+    }
+
+    const res = await fetch(url, finalOptions);
+
+    if (res.status === 401) {
+        console.warn('⚠️ Session expired or unauthorized, redirecting to login...');
+        window.location.href = '/login.html';
+        throw new Error('Unauthorized');
+    }
+
+    const data = await res.json();
+
+    // Handle error objects from API
+    if (data.error && res.status >= 400) {
+        throw new Error(data.error);
+    }
+
+    return data;
+}
+
 // Check authentication on load
 async function checkAuth() {
     try {
-        const res = await fetch('/api/auth/verify', { credentials: 'include' });
-        const data = await res.json();
-
+        const data = await apiFetch('/api/auth/verify');
         if (!data.authenticated) {
             window.location.href = '/login.html';
         }
@@ -25,45 +56,46 @@ const views = {
 function showView(viewName) {
     Object.keys(views).forEach(key => {
         views[key].style.display = key === viewName ? 'block' : 'none';
+
+        // Update menu links styling
+        const navLink = document.getElementById(`nav-${key}`) || document.querySelector(`.nav a[href="/"]`);
+        if (navLink) {
+            if (key === viewName) navLink.classList.add('active');
+            else if (viewName !== 'dashboard' || key !== 'dashboard') navLink.classList.remove('active');
+        }
     });
 
-    // Update active nav link
-    document.querySelectorAll('.nav a').forEach(link => {
-        link.classList.remove('active');
-    });
+    document.querySelectorAll('.nav a').forEach(link => link.classList.remove('active'));
+    if (viewName === 'dashboard') document.querySelector('.nav a[href="/"]').classList.add('active');
+    else if (document.getElementById(`nav-${viewName}`)) document.getElementById(`nav-${viewName}`).classList.add('active');
 }
 
 document.getElementById('nav-whitelist').addEventListener('click', (e) => {
     e.preventDefault();
     showView('whitelist');
-    e.target.classList.add('active');
     loadWhitelist();
 });
 
 document.getElementById('nav-keywords').addEventListener('click', (e) => {
     e.preventDefault();
     showView('keywords');
-    e.target.classList.add('active');
     loadKeywords();
 });
 
 document.querySelector('.nav a[href="/"]').addEventListener('click', (e) => {
     e.preventDefault();
     showView('dashboard');
-    e.target.classList.add('active');
     loadDashboard();
 });
 
 // Logout
 document.getElementById('logout-btn').addEventListener('click', async () => {
     try {
-        await fetch('/api/auth/logout', {
-            method: 'POST',
-            credentials: 'include'
-        });
+        await apiFetch('/api/auth/logout', { method: 'POST' });
         window.location.href = '/login.html';
     } catch (error) {
         console.error('Logout failed:', error);
+        window.location.href = '/login.html';
     }
 });
 
@@ -78,9 +110,7 @@ async function loadDashboard() {
 
 async function loadStats() {
     try {
-        const res = await fetch('/api/dashboard/stats', { credentials: 'include' });
-        const data = await res.json();
-
+        const data = await apiFetch('/api/dashboard/stats');
         document.getElementById('stat-total').textContent = data.total || 0;
         document.getElementById('stat-spam').textContent = data.spam_count || 0;
         document.getElementById('stat-important').textContent = data.important_count || 0;
@@ -89,7 +119,6 @@ async function loadStats() {
             ? Math.round((data.deleted_count / data.total) * 100)
             : 0;
         document.getElementById('stat-rate').textContent = deletionRate + '%';
-
     } catch (error) {
         console.error('Failed to load stats:', error);
     }
@@ -99,13 +128,7 @@ async function loadRecentEmails() {
     const tbody = document.getElementById('emails-tbody');
 
     try {
-        const res = await fetch('/api/dashboard/recent?limit=50', { credentials: 'include' });
-        const emails = await res.json();
-
-        // Handle error response from API
-        if (emails.error) {
-            throw new Error(emails.error);
-        }
+        const emails = await apiFetch('/api/dashboard/recent?limit=50');
 
         if (!Array.isArray(emails) || emails.length === 0) {
             tbody.innerHTML = `
@@ -142,11 +165,7 @@ async function loadRecentEmails() {
 
     } catch (error) {
         console.error('Failed to load emails:', error);
-
-        if (error.message === 'Unauthorized') {
-            window.location.href = '/login.html';
-            return;
-        }
+        if (error.message === 'Unauthorized') return; // Silence if redirecting
 
         tbody.innerHTML = `
       <tr>
@@ -186,22 +205,16 @@ document.getElementById('manual-run-btn').addEventListener('click', async () => 
     btn.textContent = '⏳ En cours...';
 
     try {
-        await fetch('/api/dashboard/manual-run', {
-            method: 'POST',
-            credentials: 'include'
-        });
-
+        await apiFetch('/api/dashboard/manual-run', { method: 'POST' });
         btn.textContent = '✓ Lancé !';
-
-        // Refresh stats after 5 seconds
         setTimeout(() => {
             loadDashboard();
             btn.textContent = '🚀 Exécuter maintenant';
             btn.disabled = false;
         }, 5000);
-
     } catch (error) {
         console.error('Manual run failed:', error);
+        if (error.message === 'Unauthorized') return;
         btn.textContent = '❌ Erreur';
         setTimeout(() => {
             btn.textContent = '🚀 Exécuter maintenant';
@@ -218,19 +231,10 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
 
 async function loadWhitelist() {
     const tbody = document.getElementById('whitelist-tbody');
-
     try {
-        const res = await fetch('/api/whitelist', { credentials: 'include' });
-        const domains = await res.json();
-
+        const domains = await apiFetch('/api/whitelist');
         if (domains.length === 0) {
-            tbody.innerHTML = `
-        <tr>
-          <td colspan="3" class="empty-state">
-            <p>Aucun domaine whitelisté</p>
-          </td>
-        </tr>
-      `;
+            tbody.innerHTML = `<tr><td colspan="3" class="empty-state"><p>Aucun domaine whitelisté</p></td></tr>`;
             return;
         }
 
@@ -248,7 +252,6 @@ async function loadWhitelist() {
         </tr>
       `;
         }).join('');
-
     } catch (error) {
         console.error('Failed to load whitelist:', error);
     }
@@ -256,20 +259,14 @@ async function loadWhitelist() {
 
 document.getElementById('whitelist-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const input = document.getElementById('whitelist-domain');
     const domain = input.value.trim();
 
     try {
-        const res = await fetch('/api/whitelist', {
+        const data = await apiFetch('/api/whitelist', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ domain })
+            body: { domain }
         });
-
-        const data = await res.json();
-
         if (data.success) {
             input.value = '';
             loadWhitelist();
@@ -277,23 +274,19 @@ document.getElementById('whitelist-form').addEventListener('submit', async (e) =
             alert(data.error || 'Erreur lors de l\'ajout');
         }
     } catch (error) {
+        if (error.message === 'Unauthorized') return;
         console.error('Failed to add whitelist:', error);
-        alert('Erreur de connexion');
+        alert(error.message || 'Erreur de connexion');
     }
 });
 
 async function deleteWhitelist(id) {
-    if (!confirm('Voulez-vous vraiment retirer ce domaine de la whitelist ?')) {
-        return;
-    }
-
+    if (!confirm('Voulez-vous vraiment retirer ce domaine de la whitelist ?')) return;
     try {
-        await fetch(`/api/whitelist/${id}`, {
-            method: 'DELETE',
-            credentials: 'include'
-        });
+        await apiFetch(`/api/whitelist/${id}`, { method: 'DELETE' });
         loadWhitelist();
     } catch (error) {
+        if (error.message === 'Unauthorized') return;
         console.error('Failed to delete whitelist:', error);
         alert('Erreur lors de la suppression');
     }
@@ -303,19 +296,10 @@ async function deleteWhitelist(id) {
 
 async function loadKeywords() {
     const tbody = document.getElementById('keywords-tbody');
-
     try {
-        const res = await fetch('/api/keywords', { credentials: 'include' });
-        const keywords = await res.json();
-
+        const keywords = await apiFetch('/api/keywords');
         if (keywords.length === 0) {
-            tbody.innerHTML = `
-        <tr>
-          <td colspan="4" class="empty-state">
-            <p>Aucun mot-clé banni</p>
-          </td>
-        </tr>
-      `;
+            tbody.innerHTML = `<tr><td colspan="4" class="empty-state"><p>Aucun mot-clé banni</p></td></tr>`;
             return;
         }
 
@@ -324,7 +308,6 @@ async function loadKeywords() {
             const caseSensitive = keyword.case_sensitive
                 ? '<span class="badge badge-important">Oui</span>'
                 : '<span class="badge" style="background: var(--bg-tertiary);">Non</span>';
-
             return `
         <tr>
           <td><strong>${keyword.keyword}</strong></td>
@@ -338,7 +321,6 @@ async function loadKeywords() {
         </tr>
       `;
         }).join('');
-
     } catch (error) {
         console.error('Failed to load keywords:', error);
     }
@@ -346,21 +328,15 @@ async function loadKeywords() {
 
 document.getElementById('keyword-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const input = document.getElementById('keyword-text');
     const caseSensitive = document.getElementById('keyword-case-sensitive').checked;
     const keyword = input.value.trim();
 
     try {
-        const res = await fetch('/api/keywords', {
+        const data = await apiFetch('/api/keywords', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ keyword, case_sensitive: caseSensitive })
+            body: { keyword, case_sensitive: caseSensitive }
         });
-
-        const data = await res.json();
-
         if (data.success) {
             input.value = '';
             document.getElementById('keyword-case-sensitive').checked = false;
@@ -369,27 +345,23 @@ document.getElementById('keyword-form').addEventListener('submit', async (e) => 
             alert(data.error || 'Erreur lors de l\'ajout');
         }
     } catch (error) {
+        if (error.message === 'Unauthorized') return;
         console.error('Failed to add keyword:', error);
-        alert('Erreur de connexion');
+        alert(error.message || 'Erreur de connexion');
     }
 });
 
 async function deleteKeyword(id) {
-    if (!confirm('Voulez-vous vraiment supprimer ce mot-clé ?')) {
-        return;
-    }
-
+    if (!confirm('Voulez-vous vraiment supprimer ce mot-clé ?')) return;
     try {
-        await fetch(`/api/keywords/${id}`, {
-            method: 'DELETE',
-            credentials: 'include'
-        });
+        await apiFetch(`/api/keywords/${id}`, { method: 'DELETE' });
         loadKeywords();
     } catch (error) {
+        if (error.message === 'Unauthorized') return;
         console.error('Failed to delete keyword:', error);
         alert('Erreur lors de la suppression');
     }
 }
 
-// Load dashboard on initial page load
+// Initial Load
 loadDashboard();
