@@ -1,10 +1,11 @@
 const express = require('express');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-const { initDatabase } = require('./config/database');
+const { initDatabase, pool } = require('./config/database');
 const { startScheduler } = require('./services/scheduler');
 
 const authRoutes = require('./routes/auth');
@@ -26,8 +27,13 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session (7 days expiration with rolling)
+// Session (7 days expiration with rolling, stored in PostgreSQL)
 app.use(session({
+    store: new pgSession({
+        pool: pool,
+        tableName: 'session',
+        createTableIfMissing: true
+    }),
     secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
     resave: false,
     saveUninitialized: false,
