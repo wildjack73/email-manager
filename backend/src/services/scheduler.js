@@ -9,7 +9,7 @@ let isRunning = false;
  */
 function startScheduler() {
     // Run every 5 minutes: */5 * * * *
-    const interval = process.env.SCHEDULER_INTERVAL_MINUTES || 1;
+    const interval = process.env.SCHEDULER_INTERVAL_MINUTES || 5;
     const cronExpression = `*/${interval} * * * *`;
 
     console.log(`⏰ Starting scheduler - will run every ${interval} minutes`);
