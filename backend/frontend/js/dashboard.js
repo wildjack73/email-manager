@@ -128,11 +128,13 @@ async function loadRecentEmails() {
         <tr>
           <td style="font-size: 0.875rem; color: var(--text-muted);">${date}</td>
           <td>
-            <div style="font-weight: 500;">${truncate(email.from_email, 30)}</div>
+            <div style="font-weight: 500;">${truncate(email.from_email, 35)}</div>
           </td>
-          <td>${truncate(email.subject, 50)}</td>
+          <td>${truncate(email.subject, 60)}</td>
           <td>${classificationBadge}</td>
-          <td style="font-size: 0.875rem; color: var(--text-muted); font-style: italic;">${email.claude_reasoning || ''}</td>
+          <td>
+            <div class="reasoning-cell">${email.claude_reasoning || ''}</div>
+          </td>
           <td>${actionBadge}</td>
         </tr>
       `;
@@ -140,6 +142,12 @@ async function loadRecentEmails() {
 
     } catch (error) {
         console.error('Failed to load emails:', error);
+
+        if (error.message === 'Unauthorized') {
+            window.location.href = '/login.html';
+            return;
+        }
+
         tbody.innerHTML = `
       <tr>
         <td colspan="6" class="text-center" style="color: var(--danger);">

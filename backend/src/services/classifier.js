@@ -39,30 +39,13 @@ async function isWhitelisted(fromEmail) {
  */
 function isProtectedDomain(fromEmail) {
     const domain = fromEmail.toLowerCase();
-
-    // Check against environment protected domains
     for (const protectedDomain of PROTECTED_DOMAINS) {
-        if (domain.includes(protectedDomain.toLowerCase())) {
-            return true;
-        }
+        if (domain.includes(protectedDomain.toLowerCase())) return true;
     }
-
-    // Additional safety patterns
-    const protectedPatterns = [
-        'notaire',
-        'avocat',
-        'huissier',
-        'tribunal',
-        'administration',
-        'fiscal'
-    ];
-
+    const protectedPatterns = ['notaire', 'avocat', 'huissier', 'tribunal', 'administration', 'fiscal'];
     for (const pattern of protectedPatterns) {
-        if (domain.includes(pattern)) {
-            return true;
-        }
+        if (domain.includes(pattern)) return true;
     }
-
     return false;
 }
 
@@ -72,19 +55,13 @@ function isProtectedDomain(fromEmail) {
 async function containsBannedKeywords(subject, text) {
     const result = await pool.query('SELECT keyword, case_sensitive FROM keywords');
     const keywords = result.rows;
-
     for (const row of keywords) {
         const keyword = row.keyword;
         const case_sensitive = row.case_sensitive === 1;
-
         const searchText = case_sensitive ? subject + ' ' + text : (subject + ' ' + text).toLowerCase();
         const searchKeyword = case_sensitive ? keyword : keyword.toLowerCase();
-
-        if (searchText.includes(searchKeyword)) {
-            return { found: true, keyword };
-        }
+        if (searchText.includes(searchKeyword)) return { found: true, keyword };
     }
-
     return { found: false };
 }
 
@@ -105,143 +82,94 @@ async function saveProcessedEmail(email, classification, reasoning, action) {
  */
 async function processEmails() {
     const emailClient = new EmailClient();
-
     try {
-        console.log('🚀 Starting email classification process...');
+        console.log('🚀 Starting email classification process (v3 - Robust Batch)...');
 
-        // Connect to email server
+        // Phase 1: Fetch
         await emailClient.connect();
-
-        // Fetch unread emails
-        const emails = await emailClient.fetchUnreadEmails();
+        const emails = await emailClient.fetchUnreadEmails(200);
+        emailClient.disconnect();
 
         if (emails.length === 0) {
-            console.log('✅ No emails to process');
-            emailClient.disconnect();
+            console.log('✅ No new emails to process');
             return { processed: 0, deleted: 0, kept: 0 };
         }
 
+        const toDelete = [];
+        const toMarkRead = [];
         let processed = 0;
         let deleted = 0;
         let kept = 0;
 
+        // Phase 2: Classify (Offline)
         for (const email of emails) {
-            try {
-                console.log(`\n📧 Processing: ${email.subject} from ${email.fromEmail}`);
+            console.log(`\n📧 Classifying: ${email.subject} from ${email.fromEmail}`);
 
-                // Check if already processed (avoid duplicates)
-                if (await isEmailProcessed(email.messageId)) {
-                    console.log('⏭️  Already processed, skipping');
-                    continue;
-                }
-
-                // 1. Check whitelist first (highest priority)
-                if (await isWhitelisted(email.fromEmail)) {
-                    console.log('✅ Whitelisted domain - KEEPING');
-                    await emailClient.markAsRead(email.uid);
-                    await saveProcessedEmail(email, 'IMPORTANT', 'Whitelisted domain', 'KEPT');
-                    kept++;
-                    processed++;
-                    continue;
-                }
-
-                // 2. Check protected domains (safety rule)
-                if (isProtectedDomain(email.fromEmail)) {
-                    console.log('🔒 Protected domain (.gouv.fr, bank, etc.) - KEEPING');
-                    await emailClient.markAsRead(email.uid);
-                    await saveProcessedEmail(email, 'IMPORTANT', 'Protected domain (safety rule)', 'KEPT');
-                    kept++;
-                    processed++;
-                    continue;
-                }
-
-                // 3. Check banned keywords
-                const keywordCheck = await containsBannedKeywords(email.subject, email.text);
-                if (keywordCheck.found) {
-                    console.log(`🚫 Banned keyword "${keywordCheck.keyword}" detected - DELETING`);
-                    await emailClient.moveToTrash(email.uid);
-                    await saveProcessedEmail(email, 'SPAM', `Contains banned keyword: ${keywordCheck.keyword}`, 'DELETED');
-                    deleted++;
-                    processed++;
-                    continue;
-                }
-
-                // 4. Use Claude AI to classify
-                const { classification, reasoning } = await classifyEmail(email);
-
-                // 5. Save result to database FIRST (so it appears in dashboard even if deletion fails)
-                const action = (classification === 'SPAM' || classification === 'INUTILE') ? 'DELETED' : 'KEPT';
-                await saveProcessedEmail(email, classification, reasoning, action);
-
-                // 6. Take action based on classification
-                if (action === 'DELETED') {
-                    console.log(`🗑️  Classified as ${classification} - DELETING`);
-                    try {
-                        // Robust access to UID functions
-                        const uidHandler = emailClient.imap.uid || emailClient.imap;
-                        const uid = email.uid; // Assuming email.uid is available here
-
-                        if (typeof uidHandler.addFlags !== 'function') {
-                            throw new Error('IMAP server or client does not support addFlags');
-                        }
-
-                        await new Promise((resolve, reject) => {
-                            uidHandler.addFlags(uid, '\\Deleted', (err) => {
-                                if (err) {
-                                    reject(err);
-                                    return;
-                                }
-
-                                // Expunge only the deleted UID
-                                const expungeHandler = emailClient.imap.uid || emailClient.imap;
-                                expungeHandler.expunge(uid, (err) => {
-                                    if (err) {
-                                        reject(err);
-                                        return;
-                                    }
-                                    console.log(`🗑️  Email UID ${uid} permanently deleted from INBOX`);
-                                    resolve();
-                                });
-                            });
-                        });
-                    } catch (err) {
-                        console.error(`⚠️ Failed to move email ${email.uid} to trash:`, err.message);
-                    }
-                    deleted++;
-                } else {
-                    console.log(`✅ Classified as IMPORTANT - KEEPING`);
-                    try {
-                        await emailClient.markAsRead(email.uid);
-                    } catch (err) {
-                        console.error(`⚠️ Failed to mark email ${email.uid} as read:`, err.message);
-                    }
-                    kept++;
-                }
-
-                processed++;
-
-            } catch (emailError) {
-                const errorMessage = emailError.message || 'Unknown error';
-                console.error(`❌ Error processing email ${email.messageId}:`, errorMessage);
-
-                // In case of error, keep the email but CLEARLY mark it as an ERROR in the reasoning
-                try {
-                    await emailClient.markAsRead(email.uid);
-                    await saveProcessedEmail(email, 'IMPORTANT', `ERREUR IA: ${errorMessage}`, 'KEPT');
-                    kept++;
-                } catch (saveError) {
-                    console.error('Failed to save error state:', saveError);
-                }
+            if (await isEmailProcessed(email.messageId)) {
+                console.log('⏭️  Already processed, skipping');
+                continue;
             }
+
+            // Rules
+            if (await isWhitelisted(email.fromEmail)) {
+                console.log('✅ Whitelisted - KEEPING');
+                toMarkRead.push(email.uid);
+                await saveProcessedEmail(email, 'IMPORTANT', 'Whitelisted domain', 'KEPT');
+                kept++;
+                processed++;
+                continue;
+            }
+
+            if (isProtectedDomain(email.fromEmail)) {
+                console.log('🔒 Protected - KEEPING');
+                toMarkRead.push(email.uid);
+                await saveProcessedEmail(email, 'IMPORTANT', 'Protected domain', 'KEPT');
+                kept++;
+                processed++;
+                continue;
+            }
+
+            const keywordCheck = await containsBannedKeywords(email.subject, email.text || '');
+            if (keywordCheck.found) {
+                console.log(`🚫 Banned keyword "${keywordCheck.keyword}" - DELETING`);
+                toDelete.push(email.uid);
+                await saveProcessedEmail(email, 'SPAM', `Contains banned keyword: ${keywordCheck.keyword}`, 'DELETED');
+                deleted++;
+                processed++;
+                continue;
+            }
+
+            // AI
+            const { classification, reasoning } = await classifyEmail(email);
+            const action = (classification === 'SPAM' || classification === 'INUTILE') ? 'DELETED' : 'KEPT';
+            await saveProcessedEmail(email, classification, reasoning, action);
+
+            if (action === 'DELETED') {
+                console.log(`🗑️  Classified as ${classification} - DELETING`);
+                toDelete.push(email.uid);
+                deleted++;
+            } else {
+                console.log(`✅ Classified as IMPORTANT - KEEPING`);
+                toMarkRead.push(email.uid);
+                kept++;
+            }
+            processed++;
         }
 
-        emailClient.disconnect();
+        // Phase 3: Apply actions
+        if (toDelete.length > 0 || toMarkRead.length > 0) {
+            console.log(`\n📦 Applying actions to ${toDelete.length + toMarkRead.length} emails...`);
+            await emailClient.connect();
+            if (toDelete.length > 0) await emailClient.deleteMultiple(toDelete);
+            if (toMarkRead.length > 0) await emailClient.markMultipleAsRead(toMarkRead);
+            emailClient.disconnect();
+        }
 
-        console.log(`\n✅ Classification complete: ${processed} processed, ${deleted} deleted, ${kept} kept`);
+        console.log(`\n✅ Summary: ${processed} processed, ${deleted} deleted, ${kept} kept`);
         return { processed, deleted, kept };
 
     } catch (error) {
-        console.error('❌ Fatal error in email processing:', error);
+        console.error('❌ Fatal error:', error);
         emailClient.disconnect();
         throw error;
     }

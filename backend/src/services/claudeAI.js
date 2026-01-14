@@ -6,6 +6,7 @@ const anthropic = new Anthropic({
 });
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307';
+console.log(`🤖 Using Claude model: ${CLAUDE_MODEL}`);
 
 /**
  * Classify an email using Claude AI
@@ -14,7 +15,7 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-haiku-20240307';
  */
 async function classifyEmail(email) {
     try {
-        const prompt = `
+        const systemPrompt = `
 Tu es un assistant expert en tri d'emails subissant une surcharge de messages. Ton rôle est d'être STRICT pour ne laisser passer que l'essentiel.
 Classe l'email suivant en 3 catégories :
 1. SPAM : Publicités, newsletters, annonces de ventes aux enchères (ex: priseur.net, interencheres), catalogues de lots, offres promotionnelles, sollicitations commerciales.
@@ -31,7 +32,9 @@ Tu dois répondre UNIQUEMENT au format JSON :
   "classification": "SPAM" | "INUTILE" | "IMPORTANT",
   "reasoning": "Explication courte"
 }
+`;
 
+        const userContent = `
 Email à analyser :
 Expéditeur : ${email.from}
 Sujet : ${email.subject}
@@ -41,10 +44,11 @@ Contenu : ${email.text ? email.text.substring(0, 2000) : '(Vide)'}
         const message = await anthropic.messages.create({
             model: CLAUDE_MODEL,
             max_tokens: 500,
+            system: systemPrompt,
             messages: [
                 {
                     role: 'user',
-                    content: prompt
+                    content: userContent
                 }
             ]
         });
@@ -54,18 +58,22 @@ Contenu : ${email.text ? email.text.substring(0, 2000) : '(Vide)'}
         // Try to parse JSON response
         let result;
         try {
-            // Remove markdown code blocks if present
-            const cleanedResponse = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            result = JSON.parse(cleanedResponse);
+            // Robust extraction: find the first { and the last }
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                result = JSON.parse(jsonMatch[0]);
+            } else {
+                throw new Error('No JSON object found in response');
+            }
         } catch (parseErr) {
-            console.warn('⚠️ Could not parse Claude response as JSON, using fallback');
+            console.warn('⚠️ Could not parse Claude response as JSON, using fallback logic');
             // Fallback: try to extract classification from text
             if (responseText.includes('SPAM')) {
-                result = { classification: 'SPAM', reasoning: responseText };
+                result = { classification: 'SPAM', reasoning: 'Detected as SPAM by fallback' };
             } else if (responseText.includes('INUTILE')) {
-                result = { classification: 'INUTILE', reasoning: responseText };
+                result = { classification: 'INUTILE', reasoning: 'Detected as INUTILE by fallback' };
             } else {
-                result = { classification: 'IMPORTANT', reasoning: 'Unable to classify, keeping safe' };
+                result = { classification: 'IMPORTANT', reasoning: 'Detected as IMPORTANT by fallback' };
             }
         }
 

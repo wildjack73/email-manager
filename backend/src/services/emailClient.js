@@ -14,22 +14,30 @@ class EmailClient {
 
             this.imap.once('ready', () => {
                 console.log('✅ Connected to email server');
-                // Remove the connection error listener to avoid double handling rejection
-                this.imap.removeAllListeners('error');
-                // Add a permanent error listener to prevent crashes on future errors
-                this.imap.on('error', (err) => {
-                    console.error('❌ IMAP Connection Error:', err.message);
-                });
+                // Keepalive heartbeat every 30 seconds
+                this.keepalive = setInterval(() => {
+                    if (this.imap && this.imap.state === 'authenticated') {
+                        this.imap.noop(() => { }); // Simple keepalive
+                    }
+                }, 30000);
                 resolve();
             });
 
             this.imap.once('error', (err) => {
-                console.error('❌ IMAP connection error (initial):', err);
+                console.error('❌ IMAP connection error:', err);
                 reject(err);
+            });
+
+            this.imap.on('error', (err) => {
+                console.error('⚠️ IMAP error (after ready):', err.message);
+                if (err.message.includes('ECONNRESET') || err.message.includes('closed')) {
+                    if (this.imap) this.imap.state = 'disconnected';
+                }
             });
 
             this.imap.once('end', () => {
                 console.log('📧 IMAP connection ended');
+                if (this.keepalive) clearInterval(this.keepalive);
             });
 
             this.imap.connect();
@@ -38,157 +46,148 @@ class EmailClient {
 
     // Disconnect from IMAP server
     disconnect() {
+        if (this.keepalive) {
+            clearInterval(this.keepalive);
+            this.keepalive = null;
+        }
         if (this.imap) {
             this.imap.end();
+            this.imap = null;
         }
     }
 
     // Fetch unread emails
-    async fetchUnreadEmails(limit = 200) {
+    async fetchUnreadEmails(limit = 100) {
         return new Promise((resolve, reject) => {
             this.imap.openBox('INBOX', false, (err, box) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
+                if (err) return reject(err);
 
-                // Search for UNSEEN (unread) emails
-                this.imap.search(['UNSEEN'], (err, results) => {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
+                // Filter since yesterday to avoid 83k emails
+                const yesterday = new Date(Date.now() - 48 * 60 * 60 * 1000);
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const imapDate = `${yesterday.getDate()}-${months[yesterday.getMonth()]}-${yesterday.getFullYear()}`;
+
+                console.log(`🔍 Searching since ${imapDate}...`);
+                this.imap.search(['UNSEEN', ['SINCE', imapDate]], (err, results) => {
+                    if (err) return reject(err);
 
                     if (!results || results.length === 0) {
-                        console.log('📭 No unread emails found');
-                        resolve([]);
-                        return;
+                        console.log('📭 No unread emails');
+                        return resolve([]);
                     }
 
-                    // Get newest emails first and limit count
                     const limitedResults = results.sort((a, b) => b - a).slice(0, limit);
-                    console.log(`📬 Found ${results.length} unread. Checking newest ${limitedResults.length}...`);
+                    console.log(`📬 Processing ${limitedResults.length} newest unread emails...`);
 
                     const emails = [];
-                    const fetch = this.imap.fetch(limitedResults, {
-                        bodies: '',
-                        struct: true,
-                        markSeen: false
-                    });
+                    if (limitedResults.length === 0) return resolve([]);
 
-                    let messagesToProcess = limitedResults.length;
-                    let processedCount = 0;
+                    const fetch = this.imap.fetch(limitedResults, { bodies: '', struct: true });
 
-                    const checkDone = () => {
-                        processedCount++;
-                        if (processedCount === messagesToProcess) {
-                            console.log(`✨ Filtering complete. ${emails.length} emails match criteria.`);
-                            resolve(emails);
-                        }
-                    };
-
-                    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+                    let processed = 0;
+                    const total = limitedResults.length;
 
                     fetch.on('message', (msg, seqno) => {
                         let buffer = '';
                         let attrs = null;
 
-                        msg.on('body', (stream, info) => {
-                            stream.on('data', (chunk) => {
-                                buffer += chunk.toString('utf8');
-                            });
+                        msg.on('body', (stream) => {
+                            stream.on('data', (chunk) => buffer += chunk.toString('utf8'));
                         });
 
-                        msg.once('attributes', (a) => {
-                            attrs = a;
-                        });
+                        msg.once('attributes', (a) => attrs = a);
 
                         msg.once('end', async () => {
                             try {
                                 const parsed = await simpleParser(buffer);
-                                const emailDate = parsed.date || new Date();
-
-                                // Only keep emails from the last 30 minutes
-                                if (emailDate >= thirtyMinutesAgo) {
-                                    emails.push({
-                                        uid: attrs.uid,
-                                        messageId: parsed.messageId,
-                                        from: parsed.from?.text || 'Unknown',
-                                        fromEmail: parsed.from?.value?.[0]?.address || '',
-                                        subject: parsed.subject || '(No subject)',
-                                        text: parsed.text || '',
-                                        html: parsed.html || '',
-                                        date: emailDate
-                                    });
-                                }
-                            } catch (parseErr) {
-                                console.error('Error parsing individual email:', parseErr);
+                                emails.push({
+                                    uid: attrs.uid,
+                                    messageId: parsed.messageId,
+                                    from: parsed.from?.text || 'Unknown',
+                                    fromEmail: parsed.from?.value?.[0]?.address || '',
+                                    subject: parsed.subject || '(No subject)',
+                                    text: parsed.text || '',
+                                    html: parsed.html || '',
+                                    date: parsed.date || new Date()
+                                });
+                            } catch (e) {
+                                console.error('Error parsing email:', e.message);
                             } finally {
-                                checkDone();
+                                processed++;
+                                if (processed === total) {
+                                    resolve(emails);
+                                }
                             }
                         });
                     });
 
                     fetch.once('error', (err) => {
-                        reject(err);
+                        console.error('Fetch error:', err);
+                        if (emails.length > 0) resolve(emails);
+                        else reject(err);
                     });
 
                     fetch.once('end', () => {
-                        // If no messages were actually fetched (rare but safer)
-                        if (messagesToProcess === 0) resolve([]);
+                        // Fallback in case msg 'end' events don't finish
+                        setTimeout(() => {
+                            if (processed < total) resolve(emails);
+                        }, 2000);
                     });
                 });
             });
         });
     }
 
-    // Move email to trash
-    // Move email to trash (using UID)
-    async moveToTrash(uid) {
+    // Move multiple emails to trash (using UIDs)
+    async deleteMultiple(uids) {
+        if (!uids || uids.length === 0) return;
         return new Promise((resolve, reject) => {
-            this.imap.openBox('INBOX', false, (err, box) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
+            this.imap.openBox('INBOX', false, (err) => {
+                if (err) return reject(err);
 
-                // Add deleted flag and expunge
-                this.imap.uid.addFlags(uid, '\\Deleted', (err) => {
-                    if (err) {
-                        reject(err);
+                // Process one by one or as a range
+                // For safety, let's use the first one to start
+                let current = 0;
+                const next = () => {
+                    if (current >= uids.length) {
+                        this.imap.expunge(() => resolve());
                         return;
                     }
+                    const uid = uids[current];
+                    this.imap.uid.addFlags(uid, '\\Deleted', (err) => {
+                        if (err) console.warn(`Failed to delete UID ${uid}:`, err.message);
+                        else console.log(`🗑️  UID ${uid} flagged for deletion`);
+                        current++;
+                        next();
+                    });
+                };
+                next();
+            });
+        });
+    }
 
-                    this.imap.uid.expunge(uid, (err) => {
-                        if (err) {
-                            reject(err);
-                            return;
-                        }
-                        console.log(`🗑️  Email UID ${uid} permanently deleted from INBOX`);
+    // Mark multiple emails as read (using UIDs)
+    async markMultipleAsRead(uids) {
+        if (!uids || uids.length === 0) return;
+        return new Promise((resolve, reject) => {
+            this.imap.openBox('INBOX', false, (err) => {
+                if (err) return reject(err);
+
+                let current = 0;
+                const next = () => {
+                    if (current >= uids.length) {
                         resolve();
-                    });
-                });
-            });
-        });
-    }
-
-    // Mark email as read (using UID)
-    async markAsRead(uid) {
-        return new Promise((resolve, reject) => {
-            this.imap.openBox('INBOX', false, (err, box) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-
-                this.imap.uid.addFlags(uid, '\\Seen', (err) => {
-                    if (err) {
-                        reject(err);
                         return;
                     }
-                    console.log(`✅ Email UID ${uid} marked as read`);
-                    resolve();
-                });
+                    const uid = uids[current];
+                    this.imap.uid.addFlags(uid, '\\Seen', (err) => {
+                        if (err) console.warn(`Failed to mark UID ${uid} as read:`, err.message);
+                        else console.log(`✅ UID ${uid} marked as read`);
+                        current++;
+                        next();
+                    });
+                };
+                next();
             });
         });
     }

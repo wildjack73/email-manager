@@ -314,8 +314,8 @@ h4 {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px;
-  /* Ensure table doesn't get too squished */
+  table-layout: fixed;
+  min-width: 1000px;
 }
 
 thead {
@@ -342,34 +342,81 @@ tbody tr:hover {
 }
 
 tbody td {
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   color: var(--text-primary);
   vertical-align: middle;
+  font-size: 0.9rem;
 }
 
 /* Specific column widths */
+th:nth-child(1),
+td:nth-child(1) {
+  width: 140px;
+}
+
+/* Date */
+th:nth-child(2),
+td:nth-child(2) {
+  width: 220px;
+}
+
+/* Sender */
+th:nth-child(3),
+td:nth-child(3) {
+  width: 250px;
+}
+
+/* Subject */
+th:nth-child(4),
+td:nth-child(4) {
+  width: 130px;
+}
+
+/* Classification */
+th:last-child,
+td:last-child {
+  width: 150px;
+  text-align: center;
+}
+
+/* Action */
+
 th:nth-child(5),
 td:nth-child(5) {
   min-width: 250px;
-  max-width: 400px;
+  max-width: 500px;
   white-space: normal;
 }
 
-th:last-child,
-td:last-child {
-  padding-right: 1.5rem;
-  text-align: right;
+.reasoning-cell {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-style: italic;
+  max-height: 100px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.reasoning-cell::-webkit-scrollbar {
+  width: 4px;
+}
+
+.reasoning-cell::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
 }
 
 /* Badges */
 .badge {
   display: inline-block;
-  padding: 0.25rem 0.75rem;
+  padding: 0.2rem 0.5rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .badge-spam {

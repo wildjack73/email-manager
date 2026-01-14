@@ -69,8 +69,6 @@ if (isPostgres) {
 
 async function initDatabase() {
   const fs = require('fs');
-  // Only load schema file if needed (for Postgres)
-  // Logic inside try/catch handles usage
 
   console.log(`📊 Initializing ${dbType} database...`);
 
@@ -79,15 +77,21 @@ async function initDatabase() {
       const schemaPath = path.join(__dirname, '../../database/schema.sql');
       const schema = fs.readFileSync(schemaPath, 'utf8');
 
-      // Initialize if not exists
-      await pool.query(schema);
+      // Split by semicolon to execute multiple statements (Postgres pool.query handles only one at a time reliably)
+      const statements = schema
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      for (const statement of statements) {
+        await pool.query(statement);
+      }
 
       // Migration: Ensure claude_reasoning column exists (if table was created earlier without it)
       try {
         await pool.query('ALTER TABLE processed_emails ADD COLUMN IF NOT EXISTS claude_reasoning TEXT');
       } catch (e) {
-        // Ignore error if column already exists (PG < 9.6 might not support IF NOT EXISTS on ADD COLUMN)
-        // Note: Railway uses modern PG, but safety first
+        // Ignore error if column already exists
       }
     } else {
       // Use existing shared db instance
