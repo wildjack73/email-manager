@@ -145,23 +145,24 @@ class EmailClient {
             this.imap.openBox('INBOX', false, (err) => {
                 if (err) return reject(err);
 
-                // Process one by one or as a range
-                // For safety, let's use the first one to start
-                let current = 0;
-                const next = () => {
-                    if (current >= uids.length) {
-                        this.imap.expunge(() => resolve());
-                        return;
+                console.log(`🗑️  Flagging ${uids.length} emails for deletion...`);
+                this.imap.uid.addFlags(uids, '\\Deleted', (err) => {
+                    if (err) {
+                        console.error('❌ Failed to add Deleted flag:', err.message);
+                        return reject(err);
                     }
-                    const uid = uids[current];
-                    this.imap.uid.addFlags(uid, '\\Deleted', (err) => {
-                        if (err) console.warn(`Failed to delete UID ${uid}:`, err.message);
-                        else console.log(`🗑️  UID ${uid} flagged for deletion`);
-                        current++;
-                        next();
+
+                    console.log('🧹 Expunging deleted emails...');
+                    this.imap.expunge((expungeErr) => {
+                        if (expungeErr) {
+                            console.warn('⚠️ Expunge failed, but flags were set:', expungeErr.message);
+                            // We resolve anyway because the flags are set
+                        } else {
+                            console.log('✨ Inbox expunged successfully');
+                        }
+                        resolve();
                     });
-                };
-                next();
+                });
             });
         });
     }
@@ -173,21 +174,15 @@ class EmailClient {
             this.imap.openBox('INBOX', false, (err) => {
                 if (err) return reject(err);
 
-                let current = 0;
-                const next = () => {
-                    if (current >= uids.length) {
-                        resolve();
-                        return;
+                console.log(`✅ Marking ${uids.length} emails as read...`);
+                this.imap.uid.addFlags(uids, '\\Seen', (err) => {
+                    if (err) {
+                        console.error('❌ Failed to mark as read:', err.message);
+                        return reject(err);
                     }
-                    const uid = uids[current];
-                    this.imap.uid.addFlags(uid, '\\Seen', (err) => {
-                        if (err) console.warn(`Failed to mark UID ${uid} as read:`, err.message);
-                        else console.log(`✅ UID ${uid} marked as read`);
-                        current++;
-                        next();
-                    });
-                };
-                next();
+                    console.log('✅ UIDs marked as read');
+                    resolve();
+                });
             });
         });
     }
