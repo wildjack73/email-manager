@@ -363,5 +363,31 @@ async function deleteKeyword(id) {
     }
 }
 
+// Auto-refresh dashboard every 10 seconds
+let autoRefreshInterval = null;
+
+function startAutoRefresh() {
+    // Clear existing interval if any
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+
+    // Refresh every 10 seconds
+    autoRefreshInterval = setInterval(() => {
+        // Only refresh if dashboard view is active
+        if (views.dashboard.style.display !== 'none') {
+            loadDashboard();
+        }
+    }, 10000);
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+}
+
 // Initial Load
 loadDashboard();
+startAutoRefresh();

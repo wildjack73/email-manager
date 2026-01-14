@@ -17,7 +17,11 @@ class EmailClient {
                 // Keepalive heartbeat every 30 seconds
                 this.keepalive = setInterval(() => {
                     if (this.imap && this.imap.state === 'authenticated') {
-                        this.imap.noop(() => { }); // Simple keepalive
+                        try {
+                            this.imap.noop(() => { }); // Simple keepalive
+                        } catch (err) {
+                            // Ignore noop errors (connection may be closing)
+                        }
                     }
                 }, 30000);
                 resolve();
