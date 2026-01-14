@@ -388,6 +388,27 @@ function stopAutoRefresh() {
     }
 }
 
+// Session keep-alive: ping server every 5 minutes
+let sessionKeepAliveInterval = null;
+
+function startSessionKeepAlive() {
+    if (sessionKeepAliveInterval) {
+        clearInterval(sessionKeepAliveInterval);
+    }
+
+    // Ping every 5 minutes to keep session alive
+    sessionKeepAliveInterval = setInterval(async () => {
+        try {
+            await apiFetch('/api/auth/verify');
+            console.log('Session keep-alive ping sent');
+        } catch (error) {
+            console.error('Session keep-alive failed:', error);
+            // If session is dead, we'll be redirected to login by apiFetch
+        }
+    }, 5 * 60 * 1000); // 5 minutes
+}
+
 // Initial Load
 loadDashboard();
 startAutoRefresh();
+startSessionKeepAlive();
