@@ -96,13 +96,13 @@ async function processEmails() {
             console.log(`🧹 Cleaned up ${cleanedCount} old deleted emails from database`);
         }
 
-        // Phase 1: Fetch
+        // Phase 1: Fetch (keep connection open for later actions)
         await emailClient.connect();
         const emails = await emailClient.fetchUnreadEmails(200);
-        emailClient.disconnect();
 
         if (emails.length === 0) {
             console.log('✅ No new emails to process');
+            emailClient.disconnect();
             return { processed: 0, deleted: 0, kept: 0 };
         }
 
@@ -175,10 +175,9 @@ async function processEmails() {
             processed++;
         }
 
-        // Phase 3: Apply actions
+        // Phase 3: Apply actions (connection already open from Phase 1)
         if (toDelete.length > 0 || toMarkRead.length > 0) {
             console.log(`\n📦 Applying actions to ${toDelete.length + toMarkRead.length} emails...`);
-            await emailClient.connect();
 
             if (toDelete.length > 0) {
                 try {
