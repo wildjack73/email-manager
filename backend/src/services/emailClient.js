@@ -197,8 +197,14 @@ class EmailClient {
                 // Try moving first (better for webmails)
                 this.imap.uid.move(uids, trashFolder, (moveErr) => {
                     if (!moveErr) {
-                        console.log(`✨ Successfully moved ${uids.length} emails to ${trashFolder}`);
-                        return resolve();
+                        console.log(`✨ Successfully moved ${uids.length} emails to ${trashFolder}. Expunging...`);
+                        // IMPORTANT: Move only flags for deletion on some servers, we must expunge to remove from INBOX
+                        this.imap.expunge((expungeErr) => {
+                            if (expungeErr) console.warn('⚠️ Expunge after move failed:', expungeErr.message);
+                            else console.log('✨ Inbox expunged after move');
+                            resolve();
+                        });
+                        return;
                     }
 
                     console.warn(`⚠️ Could not move to ${trashFolder}: ${moveErr.message}. Falling back to flag deletion.`);
