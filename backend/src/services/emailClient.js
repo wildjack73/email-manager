@@ -138,29 +138,80 @@ class EmailClient {
         });
     }
 
+    /**
+     * Find the trash folder name
+     */
+    async findTrashFolder() {
+        return new Promise((resolve) => {
+            this.imap.getBoxes((err, boxes) => {
+                if (err) return resolve('Trash'); // Default
+
+                const candidates = [];
+                const scan = (obj, prefix = '') => {
+                    for (const name in obj) {
+                        const fullName = prefix + name;
+                        const attribs = (obj[name].attribs || []).map(a => a.toLowerCase());
+
+                        // Check attributes first (best way)
+                        if (attribs.includes('\\trash')) return fullName;
+                        if (attribs.includes('\\junk')) candidates.push({ name: fullName, priority: 2 });
+
+                        // Check name keywords
+                        const lower = name.toLowerCase();
+                        if (lower === 'trash' || lower === 'corbeille' || lower.includes('deleted')) return fullName;
+                        if (lower.includes('indésirable') || lower.includes('spam')) candidates.push({ name: fullName, priority: 1 });
+
+                        if (obj[name].children) {
+                            const result = scan(obj[name].children, fullName + obj[name].delimiter);
+                            if (result) return result;
+                        }
+                    }
+                };
+
+                const bestAttr = scan(boxes);
+                if (bestAttr) return resolve(bestAttr);
+
+                if (candidates.length > 0) {
+                    candidates.sort((a, b) => b.priority - a.priority);
+                    return resolve(candidates[0].name);
+                }
+
+                resolve('Trash'); // Fallback
+            });
+        });
+    }
+
     // Move multiple emails to trash (using UIDs)
     async deleteMultiple(uids) {
         if (!uids || uids.length === 0) return;
+
+        const trashFolder = await this.findTrashFolder();
+        console.log(`🗑️  Detected trash/junk folder: ${trashFolder}`);
+
         return new Promise((resolve, reject) => {
             this.imap.openBox('INBOX', false, (err) => {
                 if (err) return reject(err);
 
-                console.log(`🗑️  Flagging ${uids.length} emails for deletion...`);
-                this.imap.uid.addFlags(uids, '\\Deleted', (err) => {
-                    if (err) {
-                        console.error('❌ Failed to add Deleted flag:', err.message);
-                        return reject(err);
+                console.log(`📦 Moving ${uids.length} emails to ${trashFolder}...`);
+
+                // Try moving first (better for webmails)
+                this.imap.uid.move(uids, trashFolder, (moveErr) => {
+                    if (!moveErr) {
+                        console.log(`✨ Successfully moved ${uids.length} emails to ${trashFolder}`);
+                        return resolve();
                     }
 
-                    console.log('🧹 Expunging deleted emails...');
-                    this.imap.expunge((expungeErr) => {
-                        if (expungeErr) {
-                            console.warn('⚠️ Expunge failed, but flags were set:', expungeErr.message);
-                            // We resolve anyway because the flags are set
-                        } else {
-                            console.log('✨ Inbox expunged successfully');
-                        }
-                        resolve();
+                    console.warn(`⚠️ Could not move to ${trashFolder}: ${moveErr.message}. Falling back to flag deletion.`);
+
+                    // Fallback to traditional flag deletion
+                    this.imap.uid.addFlags(uids, '\\Deleted', (flagErr) => {
+                        if (flagErr) return reject(flagErr);
+
+                        this.imap.expunge((expungeErr) => {
+                            if (expungeErr) console.warn('⚠️ Expunge failed:', expungeErr.message);
+                            else console.log('✨ Emails flagged and expunged');
+                            resolve();
+                        });
                     });
                 });
             });
