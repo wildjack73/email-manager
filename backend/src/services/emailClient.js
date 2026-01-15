@@ -239,7 +239,7 @@ class EmailClient {
                 if (err) return reject(err);
 
                 console.log(`✅ Marking ${uids.length} emails as read...`);
-                this.imap.uid.addFlags(uids, '\\Seen', (err) => {
+                this.imap.addFlags(uids, '\\Seen', (err) => {
                     if (err) {
                         console.error('❌ Failed to mark as read:', err.message);
                         return reject(err);
