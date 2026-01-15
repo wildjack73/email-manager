@@ -8,8 +8,8 @@ let isRunning = false;
  * Runs every 5 minutes
  */
 function startScheduler() {
-    // Run every 5 minutes: */5 * * * *
-    const interval = process.env.SCHEDULER_INTERVAL_MINUTES || 5;
+    // Run every 15 minutes to avoid OVH rate limiting
+    const interval = process.env.SCHEDULER_INTERVAL_MINUTES || 15;
     const cronExpression = `*/${interval} * * * *`;
 
     console.log(`⏰ Starting scheduler - will run every ${interval} minutes`);
