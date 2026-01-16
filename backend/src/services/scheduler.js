@@ -13,6 +13,7 @@ function startScheduler() {
     const cronExpression = `*/${interval} * * * *`;
 
     console.log(`⏰ Starting scheduler - will run every ${interval} minutes`);
+    console.log(`⚠️  IMPORTANT: Ensure SCHEDULER_INTERVAL_MINUTES=15 is set in Railway environment variables`);
 
     // Run immediately on startup
     // runClassifier();
